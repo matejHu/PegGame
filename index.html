@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Peg Solitaire</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    /* ─── Design tokens ─────────────────────────────────────── */
+    :root {
+      --bg:           #070710;
+      --surface:      #0e0e1c;
+      --surface-2:    rgba(255,255,255,0.04);
+      --border:       rgba(255,255,255,0.07);
+      --border-hi:    rgba(255,255,255,0.12);
+      --text:         #e2e8f0;
+      --text-muted:   #6b7280;
+      --radius-lg:    18px;
+
+      /* Peg — warm orange */
+      --peg-hi:       #fed7aa;
+      --peg-mid:      #f97316;
+      --peg-lo:       #7c2d12;
+      --peg-shadow:   rgba(249,115,22,0.25);
+
+      /* Selected — amber */
+      --sel-hi:       #fef08a;
+      --sel-mid:      #eab308;
+      --sel-lo:       #713f12;
+      --sel-glow:     rgba(234,179,8,0.7);
+
+      /* Target hole — emerald */
+      --tgt-hi:       #6ee7b7;
+      --tgt-mid:      #10b981;
+      --tgt-lo:       #064e3b;
+      --tgt-glow:     rgba(16,185,129,0.55);
+
+      /* Jumpable — rose */
+      --jmp-hi:       #fca5a5;
+      --jmp-mid:      #ef4444;
+      --jmp-lo:       #7f1d1d;
+      --jmp-glow:     rgba(239,68,68,0.55);
+    }
+
+    /* ─── Reset & base ──────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100dvh;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(249,115,22,0.08) 0%, transparent 60%),
+        var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 32px 16px 56px;
+      gap: 20px;
+      font-family: 'Inter', system-ui, sans-serif;
+      color: var(--text);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    /* ─── Title ─────────────────────────────────────────────── */
+    h1 {
+      font-size: clamp(1.6rem, 5vw, 2.5rem);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      text-align: center;
+      /* Gradient text */
+      background: linear-gradient(135deg, #fb923c 0%, #fbbf24 55%, #fb923c 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 0 28px rgba(251,146,60,0.22));
+    }
+
+    /* ─── Info bar ───────────────────────────────────────────── */
+    #info-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      width: 100%;
+      max-width: 540px;
+    }
+
+    /* Peg counter badge */
+    #peg-count {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(234,179,8,0.1);
+      border: 1px solid rgba(234,179,8,0.25);
+      border-radius: 100px;
+      padding: 6px 16px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #fde68a;
+      white-space: nowrap;
+    }
+
+    /* Status pill */
+    #game-status {
+      flex: 1;
+      min-width: 190px;
+      text-align: center;
+      font-size: 0.85rem;
+      font-weight: 400;
+      color: var(--text-muted);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 7px 18px;
+      line-height: 1.4;
+    }
+
+    /* Button */
+    .btn {
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border-hi);
+      border-radius: 100px;
+      padding: 8px 22px;
+      cursor: pointer;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 0.875rem;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+    }
+    .btn:hover {
+      background: rgba(249,115,22,0.12);
+      border-color: rgba(249,115,22,0.45);
+      color: #fed7aa;
+      box-shadow: 0 0 18px rgba(249,115,22,0.12);
+      transform: translateY(-1px);
+    }
+    .btn:active { transform: translateY(0); }
+
+    /* ─── Board container ─────────────────────────────────────
+     * Glass-style dark surface; the cross cells are rendered
+     * inside — no wood grain, just dark depth.
+     */
+    #board-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 18px;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.03),
+        0 24px 64px rgba(0,0,0,0.7),
+        0 0 60px rgba(249,115,22,0.04);
+      position: relative;
+    }
+    /* Subtle top-edge highlight — makes it feel glass-like */
+    #board-wrap::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 40%);
+      pointer-events: none;
+    }
+
+    /* ─── 9×9 CSS Grid ──────────────────────────────────────── */
+    #board {
+      display: grid;
+      grid-template-columns: repeat(9, var(--cs));
+      grid-template-rows:    repeat(9, var(--cs));
+      gap: var(--gap);
+      --cs:  min(8.2vw, 44px);
+      --gap: min(1.4vw, 5px);
+      position: relative;
+    }
+
+    /* ─── Cells ─────────────────────────────────────────────── */
+    .cell {
+      width:  var(--cs);
+      height: var(--cs);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* The circular inner element — the actual peg or hole */
+    .inner {
+      width:  70%;
+      height: 70%;
+      border-radius: 50%;
+    }
+
+    /* ─── Hole (empty valid position) ───────────────────────── */
+    .hole        { cursor: default; }
+    .hole .inner {
+      background: radial-gradient(circle at 50% 60%, #0a0a16 0%, #050509 100%);
+      box-shadow:
+        inset 0 2px 6px rgba(0,0,0,1),
+        inset 0 1px 2px rgba(0,0,0,0.8),
+        0 1px 0 rgba(255,255,255,0.04);
+    }
+
+    /* ─── Target hole (valid landing) — emerald ring + glow ─── */
+    .hole.cell-target        { cursor: pointer; }
+    .hole.cell-target .inner {
+      background: radial-gradient(circle at 50% 60%, var(--tgt-lo) 0%, #021a10 100%);
+      box-shadow:
+        inset 0 2px 4px rgba(0,0,0,0.8),
+        0 0 0 2px rgba(16,185,129,0.35),
+        0 0 12px var(--tgt-glow);
+      animation: targetPulse 1.1s ease-in-out infinite;
+    }
+    @keyframes targetPulse {
+      0%,100% { box-shadow: inset 0 2px 4px rgba(0,0,0,0.8), 0 0 0 2px rgba(16,185,129,0.3), 0 0  8px var(--tgt-glow); }
+      50%     { box-shadow: inset 0 2px 4px rgba(0,0,0,0.8), 0 0 0 2px rgba(16,185,129,0.6), 0 0 22px var(--tgt-glow); }
+    }
+
+    /* ─── Peg (normal) ──────────────────────────────────────── */
+    .peg { cursor: pointer; }
+    .peg .inner {
+      /* Two-layer gradient: specular highlight + base color */
+      background:
+        radial-gradient(circle at 38% 28%, rgba(255,255,255,0.5) 0%, transparent 38%),
+        radial-gradient(circle at 65% 75%, rgba(0,0,0,0.35) 0%, transparent 50%),
+        linear-gradient(145deg, var(--peg-mid) 0%, var(--peg-lo) 100%);
+      box-shadow:
+        0 3px 10px rgba(0,0,0,0.55),
+        0 1px 3px rgba(0,0,0,0.4),
+        0 0 0 1px rgba(255,255,255,0.05);
+      transition: transform 0.12s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.12s ease;
+    }
+    .peg:hover .inner {
+      transform: scale(1.13) translateY(-1.5px);
+      box-shadow:
+        0 6px 18px rgba(0,0,0,0.55),
+        0 0 14px var(--peg-shadow),
+        0 0 0 1px rgba(255,255,255,0.08);
+    }
+
+    /* ─── Selected peg — amber glow ─────────────────────────── */
+    .peg.cell-selected        { cursor: pointer; }
+    .peg.cell-selected .inner {
+      background:
+        radial-gradient(circle at 38% 28%, rgba(255,255,255,0.55) 0%, transparent 40%),
+        linear-gradient(145deg, var(--sel-mid) 0%, var(--sel-lo) 100%);
+      box-shadow:
+        0 0 0 2px rgba(234,179,8,0.5),
+        0 0 20px var(--sel-glow),
+        0 4px 12px rgba(0,0,0,0.5);
+      animation: selectedPulse 1.15s ease-in-out infinite;
+      transform: none !important;
+    }
+    @keyframes selectedPulse {
+      0%,100% { box-shadow: 0 0 0 2px rgba(234,179,8,0.4), 0 0 14px var(--sel-glow), 0 4px 12px rgba(0,0,0,0.5); }
+      50%     { box-shadow: 0 0 0 2px rgba(234,179,8,0.7), 0 0 30px var(--sel-glow), 0 4px 12px rgba(0,0,0,0.5); }
+    }
+
+    /* ─── Jumpable peg — rose tint ──────────────────────────── */
+    .peg.cell-jumpable .inner {
+      background:
+        radial-gradient(circle at 38% 28%, rgba(255,255,255,0.4) 0%, transparent 38%),
+        linear-gradient(145deg, var(--jmp-mid) 0%, var(--jmp-lo) 100%);
+      box-shadow:
+        0 0 0 2px rgba(239,68,68,0.4),
+        0 0 14px var(--jmp-glow),
+        0 3px 8px rgba(0,0,0,0.5);
+      animation: none !important;
+    }
+
+    /* ─── Invalid corner cells ──────────────────────────────── */
+    .cell-invalid { /* fully transparent — board bg shows */ }
+
+    /* ─── Removal animation ─────────────────────────────────── */
+    @keyframes pegRemove {
+      0%   { transform: scale(1);    opacity: 1; }
+      30%  { transform: scale(1.2);  opacity: 0.9; }
+      100% { transform: scale(0);    opacity: 0; }
+    }
+    .anim-remove .inner { animation: pegRemove 0.38s cubic-bezier(0.55,0,1,0.45) forwards; }
+
+    /* ─── Landing / bounce animation ────────────────────────── */
+    @keyframes pegLand {
+      0%   { transform: scale(0);    opacity: 0; }
+      55%  { transform: scale(1.22); opacity: 1; }
+      78%  { transform: scale(0.9);  }
+      100% { transform: scale(1);    opacity: 1; }
+    }
+    .anim-land .inner { animation: pegLand 0.4s cubic-bezier(0.16,1,0.3,1); }
+
+    /* ─── First hole appear ─────────────────────────────────── */
+    @keyframes holeAppear {
+      from { opacity: 0; transform: scale(0.4); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .anim-hole-appear .inner { animation: holeAppear 0.32s cubic-bezier(0.16,1,0.3,1); }
+
+    /* ─── End-screen overlay ─────────────────────────────────── */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(7,7,16,0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 300;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    #overlay.hidden { display: none; }
+
+    @keyframes modalIn {
+      from { transform: translateY(24px) scale(0.95); opacity: 0; }
+      to   { transform: translateY(0)    scale(1);    opacity: 1; }
+    }
+    #overlay-box {
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--radius-lg);
+      padding: 44px 48px;
+      text-align: center;
+      max-width: 360px;
+      width: 90%;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.03),
+        0 32px 80px rgba(0,0,0,0.85);
+      animation: modalIn 0.4s cubic-bezier(0.16,1,0.3,1);
+    }
+    /* Top-edge glass highlight */
+    #overlay-box::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius-lg);
+      background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 35%);
+      pointer-events: none;
+    }
+    #overlay-box { position: relative; } /* needed for ::before */
+
+    #overlay-title   { font-size: clamp(1.9rem, 6vw, 2.5rem); font-weight: 600; letter-spacing: -0.02em; margin-bottom: 10px; }
+    #overlay-message { font-size: 0.95rem; color: var(--text-muted); line-height: 1.65; margin-bottom: 30px; }
+
+    /* ─── Instructions note ─────────────────────────────────── */
+    #instructions {
+      font-size: 0.76rem;
+      color: rgba(107,114,128,0.7);
+      text-align: center;
+      max-width: 440px;
+      line-height: 1.6;
+    }
+    kbd {
+      font-family: 'Inter', monospace;
+      font-size: 0.72rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 5px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+<h1>Peg Solitaire</h1>
+
+<div id="info-bar">
+  <div id="peg-count">Pegs: 45</div>
+  <div id="game-status">Click any peg to remove it, then start playing</div>
+  <button class="btn" id="restart-btn">New Game</button>
+</div>
+
+<div id="board-wrap">
+  <div id="board"></div>
+</div>
+
+<p id="instructions">
+  Select a peg · click a glowing hole to jump · <kbd>Esc</kbd> to deselect
+</p>
+
+<!-- Win / Game-over overlay -->
+<div id="overlay" class="hidden">
+  <div id="overlay-box">
+    <h2 id="overlay-title"></h2>
+    <p  id="overlay-message"></p>
+    <button class="btn" id="play-again-btn">Play Again</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ══════════════════════════════════════════════════════════════
+   BOARD DEFINITION
+   9×9 grid.  A cell is "on the cross" if it lies in
+   columns 3-5 (the vertical bar) OR rows 3-5 (the horizontal
+   bar).  That gives exactly 45 valid positions.
+══════════════════════════════════════════════════════════════ */
+const SIZE = 9;
+
+/** Returns true if (r, c) is part of the cross-shaped board. */
+function isCross(r, c) {
+  return (c >= 3 && c <= 5) || (r >= 3 && r <= 5);
+}
+
+/** The four orthogonal directions: [Δrow, Δcol] */
+const DIRS = [[-1,0], [1,0], [0,-1], [0,1]];
+
+/* ══════════════════════════════════════════════════════════════
+   GAME STATE
+   board[r][c] values:
+     -1  →  invalid  (corner of 9×9, not on the cross)
+      0  →  empty hole
+      1  →  peg present
+══════════════════════════════════════════════════════════════ */
+const PHASE = { SETUP: 'setup', PLAYING: 'playing', OVER: 'over' };
+
+let board       = [];
+let phase       = PHASE.SETUP;
+let selected    = null;   // { r, c }  — currently selected peg
+let pegCount    = 0;
+let isAnimating = false;
+
+/** Reset board to initial state — all valid positions filled. */
+function initGame() {
+  board = Array.from({ length: SIZE }, (_, r) =>
+    Array.from({ length: SIZE }, (_, c) => isCross(r, c) ? 1 : -1)
+  );
+  phase       = PHASE.SETUP;
+  selected    = null;
+  pegCount    = 45;
+  isAnimating = false;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PURE GAME LOGIC
+══════════════════════════════════════════════════════════════ */
+
+/**
+ * Return all legal moves starting from peg at (r, c).
+ * A move is legal when:
+ *   • board[r][c] === 1          (source has a peg)
+ *   • board[mid] === 1           (adjacent cell has a peg to jump)
+ *   • board[dest] === 0          (landing cell is empty)
+ *   • dest is within the grid
+ */
+function movesFrom(r, c) {
+  if (board[r][c] !== 1) return [];
+  const out = [];
+  for (const [dr, dc] of DIRS) {
+    const mr = r + dr,     mc = c + dc;   // jumped-over peg
+    const tr = r + 2*dr,   tc = c + 2*dc; // landing cell
+    if (
+      tr >= 0 && tr < SIZE && tc >= 0 && tc < SIZE &&
+      board[mr]?.[mc] === 1 &&
+      board[tr]?.[tc] === 0
+    ) {
+      out.push({ fr: r, fc: c, mr, mc, tr, tc });
+    }
+  }
+  return out;
+}
+
+/** Return all legal moves on the entire board. */
+function allMoves() {
+  const out = [];
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++)
+      if (board[r][c] === 1) out.push(...movesFrom(r, c));
+  return out;
+}
+
+/**
+ * Apply a move to the board state.
+ * Removes the source peg and the jumped peg; places a peg at the target.
+ */
+function applyMove(m) {
+  board[m.fr][m.fc] = 0;
+  board[m.mr][m.mc] = 0;
+  board[m.tr][m.tc] = 1;
+  pegCount--;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DOM CACHE
+══════════════════════════════════════════════════════════════ */
+const boardEl    = document.getElementById('board');
+const pegCountEl = document.getElementById('peg-count');
+const statusEl   = document.getElementById('game-status');
+const overlayEl  = document.getElementById('overlay');
+const oTitleEl   = document.getElementById('overlay-title');
+const oMsgEl     = document.getElementById('overlay-message');
+
+/** "r,c" → <div class="cell"> element */
+const cellEls = {};
+
+/* ══════════════════════════════════════════════════════════════
+   DOM CONSTRUCTION  (called once on startup)
+══════════════════════════════════════════════════════════════ */
+function buildBoardDOM() {
+  boardEl.innerHTML = '';
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const el = document.createElement('div');
+      el.className  = 'cell';
+      el.dataset.r  = r;
+      el.dataset.c  = c;
+      el.addEventListener('click', () => handleClick(r, c));
+      boardEl.appendChild(el);
+      cellEls[`${r},${c}`] = el;
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RENDERING
+══════════════════════════════════════════════════════════════ */
+
+/**
+ * Compute which cells should be highlighted based on the
+ * currently selected peg.  Returns two Sets of "r,c" strings.
+ */
+function computeHighlights() {
+  const targets   = new Set(); // valid landing holes
+  const jumpables = new Set(); // pegs that would be jumped
+  if (selected && phase === PHASE.PLAYING) {
+    for (const m of movesFrom(selected.r, selected.c)) {
+      targets.add(`${m.tr},${m.tc}`);
+      jumpables.add(`${m.mr},${m.mc}`);
+    }
+  }
+  return { targets, jumpables };
+}
+
+/** Re-render the entire board from current state. */
+function render() {
+  const hl = computeHighlights();
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++)
+      renderCell(r, c, hl);
+  updateInfoBar();
+}
+
+/** Render a single cell (optionally skipping highlight computation). */
+function renderCell(r, c, hl) {
+  const el  = cellEls[`${r},${c}`];
+  const val = board[r][c];
+  const key = `${r},${c}`;
+
+  // Lazily compute highlights when called without pre-computed set
+  if (!hl) hl = computeHighlights();
+
+  el.className = 'cell'; // reset
+
+  if (val === -1) {
+    // Not part of the board — transparent gap
+    el.className += ' cell-invalid';
+    el.innerHTML  = '';
+    return;
+  }
+
+  if (val === 1) {
+    // ── Peg ──────────────────────────────────
+    const isSel  = selected && selected.r === r && selected.c === c;
+    const isJump = hl.jumpables.has(key);
+    el.className += ' peg';
+    if (isSel)  el.className += ' cell-selected';
+    if (isJump) el.className += ' cell-jumpable';
+  } else {
+    // ── Empty hole ────────────────────────────
+    el.className += ' hole';
+    if (hl.targets.has(key)) el.className += ' cell-target';
+  }
+
+  el.innerHTML = '<div class="inner"></div>';
+}
+
+function updateInfoBar() {
+  pegCountEl.textContent = `Pegs: ${pegCount}`;
+
+  if (phase === PHASE.SETUP) {
+    statusEl.textContent = 'Click any peg to remove it, then start playing';
+  } else if (phase === PHASE.PLAYING) {
+    if (selected) {
+      const n = movesFrom(selected.r, selected.c).length;
+      statusEl.textContent = n > 0
+        ? `${n} move${n !== 1 ? 's' : ''} available — click a green hole`
+        : 'No jumps from here — select a different peg';
+    } else {
+      const n = allMoves().length;
+      statusEl.textContent = `Select a peg to move  (${n} move${n !== 1 ? 's' : ''} available)`;
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ANIMATIONS
+   These helpers manipulate CSS classes on DOM nodes and await
+   timing delays.  Board state is NOT modified here.
+══════════════════════════════════════════════════════════════ */
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Animate a single peg being removed (setup phase).
+ * Applies the removal animation; caller must update board state afterward.
+ */
+async function animRemovePeg(r, c) {
+  const el = cellEls[`${r},${c}`];
+  el.className = 'cell peg anim-remove';
+  el.innerHTML = '<div class="inner"></div>';
+  await delay(420);
+}
+
+/**
+ * Animate a full jump move:
+ *   1. Source peg and jumped peg fade/shrink out.
+ *   2. Target peg bounces in.
+ * Board state is NOT changed here — applyMove() is called by the caller.
+ */
+async function animJump(m) {
+  const srcEl  = cellEls[`${m.fr},${m.fc}`];
+  const overEl = cellEls[`${m.mr},${m.mc}`];
+  const toEl   = cellEls[`${m.tr},${m.tc}`];
+
+  // Phase 1: simultaneously remove source + jumped peg
+  srcEl.className  = 'cell peg anim-remove';
+  srcEl.innerHTML  = '<div class="inner"></div>';
+  overEl.className = 'cell peg cell-jumpable anim-remove';
+  overEl.innerHTML = '<div class="inner"></div>';
+  await delay(420);
+
+  // Immediately show them as empty holes (state update comes after)
+  srcEl.className  = 'cell hole';  srcEl.innerHTML  = '<div class="inner"></div>';
+  overEl.className = 'cell hole';  overEl.innerHTML = '<div class="inner"></div>';
+
+  // Phase 2: peg lands at target
+  toEl.className = 'cell peg anim-land';
+  toEl.innerHTML = '<div class="inner"></div>';
+  await delay(420);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   INPUT HANDLING
+══════════════════════════════════════════════════════════════ */
+async function handleClick(r, c) {
+  if (isAnimating) return;
+  const val = board[r][c];
+  if (val === -1) return; // corner — not part of the board
+
+  /* ── SETUP: player removes one peg to create the first hole ── */
+  if (phase === PHASE.SETUP) {
+    if (val !== 1) return;
+    isAnimating = true;
+    await animRemovePeg(r, c);
+    board[r][c] = 0;
+    pegCount--;
+    // Show the hole with a subtle appear animation
+    const el = cellEls[`${r},${c}`];
+    el.className = 'cell hole anim-hole-appear';
+    el.innerHTML = '<div class="inner"></div>';
+    await delay(320);
+    phase = PHASE.PLAYING;
+    isAnimating = false;
+    render();
+    return;
+  }
+
+  if (phase !== PHASE.PLAYING) return;
+
+  const { targets } = computeHighlights();
+  const key = `${r},${c}`;
+
+  /* ── Clicking a valid target hole → execute the jump ── */
+  if (val === 0 && targets.has(key)) {
+    const move = movesFrom(selected.r, selected.c)
+                   .find(m => m.tr === r && m.tc === c);
+    if (!move) return;
+
+    isAnimating = true;
+    selected = null; // clear selection before redraw
+
+    await animJump(move);
+    applyMove(move); // update board state after visual
+
+    isAnimating = false;
+
+    /* Check for game over — no moves left */
+    if (allMoves().length === 0) {
+      phase = PHASE.OVER;
+      render();
+      await delay(450);
+      showEndScreen();
+    } else {
+      render();
+    }
+    return;
+  }
+
+  /* ── Clicking a peg: select or deselect ── */
+  if (val === 1) {
+    if (selected && selected.r === r && selected.c === c) {
+      selected = null; // toggle off
+    } else {
+      selected = { r, c };
+    }
+    render();
+    return;
+  }
+
+  /* ── Clicking an empty non-target cell → deselect ── */
+  selected = null;
+  render();
+}
+
+/** Escape key deselects the current peg. */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && phase === PHASE.PLAYING && !isAnimating) {
+    selected = null;
+    render();
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════
+   END SCREEN
+══════════════════════════════════════════════════════════════ */
+function showEndScreen() {
+  let title, msg, color;
+
+  if (pegCount === 1) {
+    title = '🏆 Perfect!';
+    msg   = 'Incredible — just 1 peg remains. You\'ve solved the puzzle!';
+    color = '#ffd700';
+  } else if (pegCount <= 3) {
+    title = 'Excellent!';
+    msg   = `Only ${pegCount} peg${pegCount > 1 ? 's' : ''} remain. Outstanding play!`;
+    color = '#90ee90';
+  } else if (pegCount <= 8) {
+    title = 'Well Done';
+    msg   = `${pegCount} pegs remain. A solid result — can you do better?`;
+    color = '#f5deb3';
+  } else {
+    title = 'Game Over';
+    msg   = `${pegCount} pegs remain and no moves are left. Give it another try!`;
+    color = '#ff8888';
+  }
+
+  oTitleEl.textContent = title;
+  oTitleEl.style.color = color;
+  oMsgEl.textContent   = msg;
+  overlayEl.classList.remove('hidden');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CONTROLS
+══════════════════════════════════════════════════════════════ */
+function startNewGame() {
+  overlayEl.classList.add('hidden');
+  initGame();
+  render();
+}
+
+document.getElementById('restart-btn').addEventListener('click', startNewGame);
+document.getElementById('play-again-btn').addEventListener('click', startNewGame);
+
+/* ══════════════════════════════════════════════════════════════
+   BOOT
+══════════════════════════════════════════════════════════════ */
+buildBoardDOM();
+initGame();
+render();
+</script>
+</body>
+</html>
